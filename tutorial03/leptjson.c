@@ -4,7 +4,7 @@
 #include <math.h>    /* HUGE_VAL */
 #include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
 #include <string.h>  /* memcpy() */
-
+#include <stdio.h>
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
 #define LEPT_PARSE_STACK_INIT_SIZE 256
 #endif
@@ -87,24 +87,60 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
 }
 
 static int lept_parse_string(lept_context* c, lept_value* v) {
+    printf("lept_parse_string: c->json %s\n", c->json);
     size_t head = c->top, len;
     const char* p;
     EXPECT(c, '\"');
     p = c->json;
+    int is_slash = 0;  // 标记上一个字符串是否为 反斜杠
     for (;;) {
         char ch = *p++;
-        switch (ch) {
-            case '\"':
-                len = c->top - head;
-                lept_set_string(v, (const char*)lept_context_pop(c, len), len);
-                c->json = p;
-                return LEPT_PARSE_OK;
-            case '\0':
-                c->top = head;
-                return LEPT_PARSE_MISS_QUOTATION_MARK;
-            default:
-                PUTC(c, ch);
+        printf("lept_parse_string: ch %d, %c\n", ch, ch);
+        if (is_slash) {
+            switch (ch) {
+                case '\\':
+                case '\"':
+                case '/':
+                    PUTC(c, ch);
+                    break;
+                case 'n':
+                    PUTC(c, '\n');
+                    break;
+                case 'b':
+                    PUTC(c, '\b');
+                    break;
+                case 't':
+                    PUTC(c, '\t');
+                    break;
+                case 'r':
+                    PUTC(c, '\r');
+                    break;
+                case 'f':
+                    PUTC(c, '\f');
+                    break;
+                default:
+                    return LEPT_PARSE_INVALID_STRING_ESCAPE;
+            }
+            is_slash = 0;
+        }  else {
+            switch (ch) {
+                case '\\':
+                    is_slash = 1; // 如果上一个不是反斜杠, 这一个是的, 那么设置些为1
+                    break;
+                case '\"':
+                    len = c->top - head;
+                    lept_set_string(v, (const char*)lept_context_pop(c, len), len);
+                    c->json = p;
+                    return LEPT_PARSE_OK;
+                case '\0':
+                    c->top = head;
+                    return LEPT_PARSE_MISS_QUOTATION_MARK;
+                default:
+                    PUTC(c, ch);
+            }
         }
+
+
     }
 }
 
@@ -153,12 +189,21 @@ lept_type lept_get_type(const lept_value* v) {
 }
 
 int lept_get_boolean(const lept_value* v) {
-    /* \TODO */
-    return 0;
+    assert(v != NULL && (v->type == LEPT_FALSE || v->type == LEPT_TRUE));
+    if (v->type == LEPT_FALSE) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
 
 void lept_set_boolean(lept_value* v, int b) {
-    /* \TODO */
+    assert(v != NULL);
+    if (b == 0) {
+        v->type = LEPT_FALSE;
+    } else {
+        v->type = LEPT_TRUE;
+    }
 }
 
 double lept_get_number(const lept_value* v) {
@@ -168,6 +213,9 @@ double lept_get_number(const lept_value* v) {
 
 void lept_set_number(lept_value* v, double n) {
     /* \TODO */
+    assert(v != NULL);
+    v->type = LEPT_NUMBER;
+    v->u.n = n;
 }
 
 const char* lept_get_string(const lept_value* v) {
@@ -182,6 +230,7 @@ size_t lept_get_string_length(const lept_value* v) {
 
 void lept_set_string(lept_value* v, const char* s, size_t len) {
     assert(v != NULL && (s != NULL || len == 0));
+    printf("lept_set_string: s: %s, len: %d\n", s, len);
     lept_free(v);
     v->u.s.s = (char*)malloc(len + 1);
     memcpy(v->u.s.s, s, len);
