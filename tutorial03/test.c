@@ -172,9 +172,9 @@ static void test_parse_invalid_string_escape() {
 }
 
 static void test_parse_invalid_string_char() {
-#if 0
-    TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x01\"");
-    TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");
+#if 1
+    TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x01\"");  // 16进制表示的ASCII控制字符(不可显示), 参考 http://ascii.911cha.com/
+    TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");  // 16进制表示的ASCII控制字符(不可显示)
 #endif
 }
 
@@ -246,5 +246,8 @@ static void test_parse() {
 int main() {
     test_parse();
     printf("%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
+
+    printf("%c, %c, %d\n", 33, '!', 33 == '!');
+    printf("%c, %c, %d\n", '\x21', '!', '\x21' == '!');  // 16进制表
     return main_ret;
 }

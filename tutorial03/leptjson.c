@@ -96,7 +96,7 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
     for (;;) {
         char ch = *p++;
         printf("lept_parse_string: ch %d, %c\n", ch, ch);
-        if (is_slash) {
+        if (is_slash) {  // 这么解析不如答案里给的简洁, 可以参考answer部分.
             switch (ch) {
                 case '\\':
                 case '\"':
@@ -119,6 +119,7 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                     PUTC(c, '\f');
                     break;
                 default:
+                    c->top = head;
                     return LEPT_PARSE_INVALID_STRING_ESCAPE;
             }
             is_slash = 0;
@@ -136,6 +137,11 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                     c->top = head;
                     return LEPT_PARSE_MISS_QUOTATION_MARK;
                 default:
+                    // >= 0x20 为ASCII可显示字符, 参考链接: http://ascii.911cha.com/
+                    if ((unsigned char)ch < 0x20) {
+                        c->top = head;
+                        return LEPT_PARSE_INVALID_STRING_CHAR;
+                    }
                     PUTC(c, ch);
             }
         }
@@ -199,6 +205,7 @@ int lept_get_boolean(const lept_value* v) {
 
 void lept_set_boolean(lept_value* v, int b) {
     assert(v != NULL);
+    lept_free(v);
     if (b == 0) {
         v->type = LEPT_FALSE;
     } else {
@@ -214,6 +221,7 @@ double lept_get_number(const lept_value* v) {
 void lept_set_number(lept_value* v, double n) {
     /* \TODO */
     assert(v != NULL);
+    lept_free(v);
     v->type = LEPT_NUMBER;
     v->u.n = n;
 }
