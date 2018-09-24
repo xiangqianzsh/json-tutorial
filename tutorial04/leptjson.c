@@ -8,6 +8,7 @@
 #include <math.h>    /* HUGE_VAL */
 #include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
 #include <string.h>  /* memcpy() */
+#include <stdio.h>
 
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
 #define LEPT_PARSE_STACK_INIT_SIZE 256
@@ -90,18 +91,55 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
     return LEPT_PARSE_OK;
 }
 
+
 static const char* lept_parse_hex4(const char* p, unsigned* u) {
     /* \TODO */
+    unsigned num = 0;
+    for (int i = 0; i < 4; ++i) {
+        printf("lept_parse_hex4: ch %d, %c\n", *p, *p);
+        unsigned current_num;
+        if (ISDIGIT(*p)) {
+            current_num = *p - '0';
+        } else if (*p >= 'A' && *p <= 'F') {
+            current_num = *p - 'A' + 10;
+        } else if (*p >= 'a' && *p <= 'e') {
+            current_num = *p - 'a' + 10;
+        } else {
+            return NULL;
+        }
+        num = num * 16 + current_num;  // 或参考答案中的用移位的方式来计算
+        ++p;
+    }
+    *u = num;
+    printf("lept_parse_hex4: result of u: %ld\n", *u);
     return p;
 }
 
 static void lept_encode_utf8(lept_context* c, unsigned u) {
     /* \TODO */
+    assert(u >= 0x0000 && u <= 0x10FFFF);
+    printf("lept_encode_utf8: c: %d\n", u);
+    if (u >= 0x0000 && u <= 0x007F) {
+        PUTC(c, (u & 0xFF)); /* 0xFF = 11111111 */
+    } else if (u >= 0x0080 && u <= 0x07FF) {
+        PUTC(c, (0xC0 | ((u >>  6) & 0xFF))); /* 0xC0 = 11000000 */
+        PUTC(c, (0x80 | ( u        & 0x3F))); /* 0x3F = 00111111 */
+    } else if (u >= 0x0800 && u <= 0xFFFF) {
+        PUTC(c, (0xE0 | ((u >> 12) & 0xFF))); /* 0xE0 = 11100000 */
+        PUTC(c, (0x80 | ((u >>  6) & 0x3F))); /* 0x80 = 10000000 */
+        PUTC(c, (0x80 | ( u        & 0x3F))); /* 0x3F = 00111111 */
+    } else if (u >= 0x10000 && u <= 0x10FFFF) {
+        PUTC(c, (0xF0 | ((u >> 18) & 0xFF))); /* 0xF0 = 11110000 */
+        PUTC(c, (0x80 | ((u >> 12) & 0x3F))); /* */
+        PUTC(c, (0x80 | ((u >>  6) & 0x3F))); /* 0x80 = 10000000 */
+        PUTC(c, (0x80 | ( u        & 0x3F))); /* 0x3F = 00111111 */
+    }
 }
 
 #define STRING_ERROR(ret) do { c->top = head; return ret; } while(0)
 
 static int lept_parse_string(lept_context* c, lept_value* v) {
+    printf("lept_parse_string: c->json %s\n", c->json);
     size_t head = c->top, len;
     unsigned u;
     const char* p;
@@ -109,6 +147,7 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
     p = c->json;
     for (;;) {
         char ch = *p++;
+        printf("lept_parse_string: ch %d, %c\n", ch, ch);
         switch (ch) {
             case '\"':
                 len = c->top - head;
@@ -128,7 +167,25 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                     case 'u':
                         if (!(p = lept_parse_hex4(p, &u)))
                             STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
-                        /* \TODO surrogate handling */
+
+                        if (u >= 0xD800 && u <= 0xDBFF) {  // high
+                            printf("p[0]: ch %d, %c\n", p[0], p[0]);
+                            printf("p[1]: ch %d, %c\n", p[1], p[1]);
+                            if (!(p[0] == '\\' && p[1] == 'u')) {
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                            }
+
+                            p += 2;
+                            unsigned low;
+                            if (!(p = lept_parse_hex4(p, &low)))
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
+                            if (!(low >= 0xDC00 && low <= 0xDFFF)) {
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                            }
+
+                            u = 0x10000 + (u - 0xD800) * 0x400 + (low - 0xDC00);
+                        }
+
                         lept_encode_utf8(c, u);
                         break;
                     default:

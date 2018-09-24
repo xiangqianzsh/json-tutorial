@@ -275,5 +275,11 @@ int main() {
     test_parse();
     test_access();
     printf("%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
+
+    unsigned u = 0x20AC;
+    printf("%d, %d\n", (0xE0 | ((u >> 12) & 0xFF)), 0xE2);
+    printf("%d, %d\n", (0x80 | ((u >>  6) & 0x3F)), 0x82);
+    printf("%d, %d\n", (0x80 | ( u        & 0x3F)), 0xAC);
+
     return main_ret;
 }
