@@ -8,6 +8,7 @@
 #include <math.h>    /* HUGE_VAL */
 #include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
 #include <string.h>  /* memcpy() */
+#include <stdio.h>
 
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
 #define LEPT_PARSE_STACK_INIT_SIZE 256
@@ -24,6 +25,7 @@ typedef struct {
     size_t size, top;
 }lept_context;
 
+// 这个其实并不是真正的push进去, 只是调整到了放进去的状态, 但还并没有真正放进去.
 static void* lept_context_push(lept_context* c, size_t size) {
     void* ret;
     assert(size > 0);
@@ -187,6 +189,7 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
     size_t size = 0;
     int ret;
     EXPECT(c, '[');
+    lept_parse_whitespace(c);
     if (*c->json == ']') {
         c->json++;
         v->type = LEPT_ARRAY;
@@ -195,12 +198,17 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
         return LEPT_PARSE_OK;
     }
     for (;;) {
+        lept_parse_whitespace(c);
         lept_value e;
         lept_init(&e);
-        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK)
+        if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK) {
+            lept_context_pop(c, c->top);
             return ret;
+        }
+        /* e 放到 stack中, 压入队列. */
         memcpy(lept_context_push(c, sizeof(lept_value)), &e, sizeof(lept_value));
         size++;
+        lept_parse_whitespace(c);
         if (*c->json == ',')
             c->json++;
         else if (*c->json == ']') {
@@ -211,8 +219,10 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
             memcpy(v->u.a.e = (lept_value*)malloc(size), lept_context_pop(c, size), size);
             return LEPT_PARSE_OK;
         }
-        else
+        else {
+            lept_context_pop(c, c->top);
             return LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+        }
     }
 }
 
@@ -244,6 +254,7 @@ int lept_parse(lept_value* v, const char* json) {
             ret = LEPT_PARSE_ROOT_NOT_SINGULAR;
         }
     }
+    // printf("%d\n", ret);
     assert(c.top == 0);
     free(c.stack);
     return ret;
