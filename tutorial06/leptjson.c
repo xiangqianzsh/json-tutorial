@@ -144,7 +144,7 @@ static int lept_parse_string_raw(lept_context* c, char** str, size_t* len) {
         switch (ch) {
             case '\"':
                 *len = c->top - head;
-                *str = (char*)(c->stack + head);
+                *str = lept_context_pop(c, *len);  // 直接在里Pop出去确实比较好, 后面比较容易处理, 不用再考虑stack里还有一个string的问题.
                 printf("lept_parse_string_raw: str is %s\n", *str);
                 c->json = p;
                 return LEPT_PARSE_OK;
@@ -196,7 +196,6 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
     if ((ret = lept_parse_string_raw(c, &s, &len)) == LEPT_PARSE_OK) {
         printf("lept_parse_string:str %s\n", s);
         lept_set_string(v, s, len);
-        lept_context_pop(c, len);
     }
 
     return ret;
@@ -272,7 +271,8 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
             if ((ret = lept_parse_string_raw(c, &s, &m.klen)) != LEPT_PARSE_OK) {
                 break;
             } else {
-                memcpy(m.k = (char*)malloc(m.klen), s, m.klen);
+                memcpy(m.k = (char*)malloc(m.klen + 1), s, m.klen); // add one
+                m.k[m.klen] = '\0';
                 printf("lept_parse_object: m.k %s\n", m.k);
             }
         } else {
@@ -283,7 +283,6 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
         /* \todo parse ws colon ws */
         lept_parse_whitespace(c);
         if (*(c->json++) != ':') {
-            (char *)lept_context_pop(c, m.klen);
             ret = LEPT_PARSE_MISS_COLON;
             break;
         }
@@ -302,15 +301,11 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
             c->json++;
             lept_parse_whitespace(c);
         } else if (*c->json == '}') {
+            size_t s = sizeof(lept_member) * size;
             c->json++;
             v->type = LEPT_OBJECT;
             v->u.o.size = size;
-            size *= sizeof(lept_member);
-            v->u.o.m = (lept_member*)malloc(size);
-            for (size_t i = v->u.o.size; i != 0; i--) {
-                memcpy(&(v->u.o.m[i - 1]), lept_context_pop(c, sizeof(lept_member)), sizeof(lept_member));
-                lept_context_pop(c, v->u.o.m[i-1].klen);
-            }
+            memcpy(v->u.o.m = (lept_member*)malloc(s), lept_context_pop(c, s), s);
             return LEPT_PARSE_OK;
         } else {
             ret = LEPT_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
@@ -318,15 +313,12 @@ static int lept_parse_object(lept_context* c, lept_value* v) {
         }
     }
 
-    /* \todo Pop and free members on the stack */
     /* Pop and free values on the stack */
-    for (size_t i = size; i > 0 ; i--) {
-        lept_member *m_tmp;
-        m_tmp = (lept_member *) lept_context_pop(c, sizeof(lept_member));
-        size_t m_klen = m_tmp->klen;
-        (char *) lept_context_pop(c, m_klen);
-//        free(m_tmp->k);
-        printf("lept_parse_object: i the delete %d, klen %d\n", i - 1, m_klen);
+    free(m.k);
+    for (size_t i = 0; i < size; i++) {
+        lept_member* m = (lept_member*)lept_context_pop(c, sizeof(lept_member));
+        free(m->k);
+        lept_free(&m->v);
     }
     return ret;
 }
@@ -377,12 +369,13 @@ void lept_free(lept_value* v) {
                 lept_free(&v->u.a.e[i]);
             free(v->u.a.e);
             break;
-//        case LEPT_OBJECT:
-//            for (i = 0; i < v->u.o.size; i++) {
-//                lept_free(&v->u.o.m[i].v);
-//            }
-//            free(v->u.o.m);
-//            break;
+        case LEPT_OBJECT:
+            for (i = 0; i < v->u.o.size; i++) {
+                free(v->u.o.m[i].k);
+                lept_free(&v->u.o.m[i].v);
+            }
+            free(v->u.o.m);
+            break;
         default: break;
     }
 
