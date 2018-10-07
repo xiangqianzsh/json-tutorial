@@ -202,8 +202,7 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
         lept_value e;
         lept_init(&e);
         if ((ret = lept_parse_value(c, &e)) != LEPT_PARSE_OK) {
-            lept_context_pop(c, c->top);
-            return ret;
+            break;
         }
         /* e 放到 stack中, 压入队列. */
         memcpy(lept_context_push(c, sizeof(lept_value)), &e, sizeof(lept_value));
@@ -220,10 +219,13 @@ static int lept_parse_array(lept_context* c, lept_value* v) {
             return LEPT_PARSE_OK;
         }
         else {
-            lept_context_pop(c, c->top);
-            return LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            ret = LEPT_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            break;
         }
     }
+    /* Pop and free values on the stack */
+    for (size_t i = 0; i < size; i++)
+        lept_free((lept_value*)lept_context_pop(c, sizeof(lept_value)));
 }
 
 static int lept_parse_value(lept_context* c, lept_value* v) {
@@ -260,10 +262,16 @@ int lept_parse(lept_value* v, const char* json) {
     return ret;
 }
 
-void lept_free(lept_value* v) {
+void lept_free(lept_value *v) {
     assert(v != NULL);
-    if (v->type == LEPT_STRING)
+    if (v->type == LEPT_STRING) {
         free(v->u.s.s);
+    } else if (v->type == LEPT_ARRAY) {
+        for (size_t i = 0; i < v->u.a.size; i++) {
+            lept_free(&v->u.a.e[i]);
+            free(v->u.a.e);
+        }
+    }
     v->type = LEPT_NULL;
 }
 
